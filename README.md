@@ -57,11 +57,3 @@ This project implements a real-time American Sign Language (ASL) translator that
 
 
 
-## 📚 References
-
-- [American Sign Language Alphabet](https://www.nidcd.nih.gov/health/american-sign-language)
-- [MediaPipe Hands](https://google.github.io/mediapipe/solutions/hands.html)
-- [TensorFlow CNN Tutorial](https://www.tensorflow.org/tutorials/images/cnn)
-- [Flask Web Development](https://flask.palletsprojects.com/)
-
-
