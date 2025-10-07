@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤟 ASL Recognition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        #video {
+            width: 100%;
+            max-width: 640px;
+            border: 3px solid white;
+            border-radius: 15px;
+            margin: 1rem auto;
+            display: block;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .display-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        .box {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.8;
+        }
+        #letter {
+            font-size: 3rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        #word, #sentence {
+            font-size: 1.5rem;
+            font-weight: 500;
+            min-height: 2.5rem;
+            word-wrap: break-word;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: center;
+            margin: 2rem 0;
+        }
+        .btn {
+            background: #ffffff;
+            color: #667eea;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+        }
+        .status {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(0,0,0,0.7);
+            padding: 0.5rem 1rem;
+            border-radius: 10px;
+            font-size: 0.8rem;
+        }
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8rem; }
+            .display-grid { grid-template-columns: 1fr; }
+            #letter { font-size: 2.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤟 ASL Recognition</h1>
+        
+        <video id="video" autoplay muted></video>
+        
+        <div class="display-grid">
+            <div class="box">
+                <div class="label">Letter</div>
+                <div id="letter">?</div>
+            </div>
+            <div class="box">
+                <div class="label">Word</div>
+                <div id="word">_</div>
+            </div>
+            <div class="box">
+                <div class="label">Sentence</div>
+                <div id="sentence">Start signing...</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" onclick="commitWord()">⌨️ Space</button>
+            <button class="btn" onclick="clearAll()">🗑️ Clear</button>
+            <button class="btn" onclick="copyText()">📋 Copy</button>
+        </div>
+    </div>
+    
+    <div class="status" id="status">Connecting...</div>
+
+    <script>
+        const elements = {
+            video: document.getElementById('video'),
+            letter: document.getElementById('letter'),
+            word: document.getElementById('word'),
+            sentence: document.getElementById('sentence'),
+            status: document.getElementById('status')
+        };
+        
+        const socket = io();
+        let canvas, ctx;
+        
+        // Initialize camera
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, facingMode: 'user' }
+                });
+                elements.video.srcObject = stream;
+                elements.status.textContent = 'Camera ready';
+                
+                // Create canvas for frame processing
+                canvas = document.createElement('canvas');
+                ctx = canvas.getContext('2d');
+                
+                startProcessing();
+            } catch (err) {
+                elements.status.textContent = 'Camera access denied';
+                console.error('Camera error:', err);
+            }
+        }
+        
+        // Process video frames
+        function startProcessing() {
+            setInterval(() => {
+                if (elements.video.readyState === 4) {
+                    canvas.width = elements.video.videoWidth;
+                    canvas.height = elements.video.videoHeight;
+                    ctx.drawImage(elements.video, 0, 0);
+                    socket.emit('stream', canvas.toDataURL('image/jpeg', 0.8));
+                }
+            }, 200);
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                commitWord();
+            } else if (e.key === 'Escape') {
+                clearAll();
+            }
+        });
+        
+        // Functions
+        function commitWord() {
+            socket.emit('commit_word');
+        }
+        
+        function clearAll() {
+            socket.emit('clear_all');
+        }
+        
+        async function copyText() {
+            try {
+                await navigator.clipboard.writeText(elements.sentence.textContent);
+                elements.status.textContent = 'Copied!';
+                setTimeout(() => elements.status.textContent = 'Ready', 2000);
+            } catch (err) {
+                console.error('Copy failed:', err);
+            }
+        }
+        
+        // Socket events
+        socket.on('connect', () => {
+            elements.status.textContent = 'Connected';
+        });
+        
+        socket.on('prediction', (data) => {
+            elements.letter.textContent = data.letter;
+            elements.word.textContent = data.word || '_';
+            elements.sentence.textContent = data.sentence || 'Start signing...';
+            
+            if (data.confidence > 0) {
+                elements.status.textContent = `Confidence: ${Math.round(data.confidence * 100)}%`;
+            }
+        });
+        
+        socket.on('error', (data) => {
+            elements.status.textContent = 'Processing error';
+        });
+        
+        // Initialize
+        initCamera();
+    </script>
+</body>
+</html>
