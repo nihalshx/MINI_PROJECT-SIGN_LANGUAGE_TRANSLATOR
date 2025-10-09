@@ -4,141 +4,198 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🤟 ASL Recognition</title>
+    <meta name="color-scheme" content="light dark">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0b1020;
+            --bg-accent: #111735;
+            --primary: #7C8CF8;
+            --primary-600: #667eea;
+            --text: #e6e9f2;
+            --muted: #adb3c4;
+            --surface: rgba(255,255,255,0.06);
+            --surface-2: rgba(255,255,255,0.1);
+            --ring: rgba(124, 140, 248, 0.5);
+            --shadow: 0 10px 30px rgba(0,0,0,0.35);
+        }
+
+        [data-theme="light"] {
+            --bg: #f7f8fc;
+            --bg-accent: #eef1ff;
+            --primary: #4f46e5;
+            --primary-600: #4338ca;
+            --text: #0f172a;
+            --muted: #475569;
+            --surface: rgba(0,0,0,0.04);
+            --surface-2: rgba(0,0,0,0.08);
+            --ring: rgba(79, 70, 229, 0.35);
+            --shadow: 0 10px 30px rgba(2,6,23,0.15);
+        }
+
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
         body {
-            font-family: 'Segoe UI', system-ui, Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            min-height: 100vh;
-            padding: 1rem;
-        }
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            text-align: center;
-        }
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-        #video {
-            width: 100%;
-            max-width: 640px;
-            border: 3px solid white;
-            border-radius: 15px;
-            margin: 1rem auto;
-            display: block;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-        }
-        .display-grid {
+            margin: 0;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, Noto Sans, sans-serif;
+            color: var(--text);
+            background: radial-gradient(90% 120% at 10% 10%, var(--bg-accent), var(--bg)),
+                        radial-gradient(70% 90% at 90% 10%, rgba(124,140,248,0.08), transparent 60%);
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1rem;
-            margin: 2rem 0;
+            grid-template-rows: auto 1fr auto;
+            min-height: 100vh;
         }
-        .box {
-            background: rgba(255,255,255,0.15);
-            backdrop-filter: blur(10px);
-            padding: 1.5rem;
-            border-radius: 15px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            border: 1px solid rgba(255,255,255,0.1);
+
+        .container { width: min(1100px, 92%); margin: 0 auto; }
+
+        header {
+            position: sticky; top: 0; z-index: 10;
+            backdrop-filter: saturate(140%) blur(8px);
+            background: linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0));
         }
-        .label {
-            font-size: 0.9rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            opacity: 0.8;
+        .nav {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 1rem 0.25rem;
         }
-        #letter {
-            font-size: 3rem;
-            font-weight: bold;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        .brand { display: flex; align-items: center; gap: .75rem; }
+        .brand-badge {
+            width: 36px; height: 36px; border-radius: 10px;
+            display: grid; place-items: center;
+            color: white; background: linear-gradient(135deg, var(--primary-600), var(--primary));
+            box-shadow: var(--shadow);
         }
-        #word, #sentence {
-            font-size: 1.5rem;
-            font-weight: 500;
-            min-height: 2.5rem;
-            word-wrap: break-word;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .brand h1 { font-size: 1.15rem; letter-spacing: .3px; margin: 0; }
+        .nav-actions { display: flex; align-items: center; gap: .5rem; }
+
+        .icon-btn {
+            background: var(--surface);
+            border: 1px solid var(--surface-2);
+            color: var(--text);
+            border-radius: 10px; padding: .6rem .75rem; cursor: pointer;
+            display: inline-flex; align-items: center; gap: .5rem;
+            transition: transform .15s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease;
         }
-        .controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            justify-content: center;
-            margin: 2rem 0;
+        .icon-btn:hover { transform: translateY(-1px); border-color: var(--ring); box-shadow: 0 6px 18px rgba(0,0,0,0.18); }
+        .icon-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+
+        main { padding: 1.25rem 0 2rem; }
+        .layout {
+            display: grid; gap: 1.25rem;
+            grid-template-columns: 1.2fr .8fr;
         }
+        @media (max-width: 980px) { .layout { grid-template-columns: 1fr; } }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--surface-2);
+            border-radius: 16px;
+            padding: 1rem; box-shadow: var(--shadow);
+        }
+        .panel-title { margin: 0 0 .75rem; font-size: .9rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+
+        #video {
+            width: 100%; aspect-ratio: 4/3; background: #0c0f1f;
+            border-radius: 12px; display: block;
+            border: 1px solid var(--surface-2);
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+        }
+
+        .stats { display: grid; gap: .75rem; }
+        .card { background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+                border: 1px solid var(--surface-2); border-radius: 14px; padding: 1rem; }
+        .card .label { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: .35rem; }
+        #letter { font-size: clamp(2.25rem, 4vw, 3.25rem); font-weight: 800; letter-spacing: .04em; }
+        #word, #sentence { font-size: clamp(1.05rem, 1.8vw, 1.25rem); min-height: 1.8rem; word-wrap: break-word; }
+
+        .controls { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
         .btn {
-            background: #ffffff;
-            color: #667eea;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 25px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 1px solid var(--surface-2);
+            background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+            color: var(--text); border-radius: 999px;
+            padding: .65rem 1.1rem; font-weight: 600; cursor: pointer;
+            transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease;
         }
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
-        }
+        .btn:hover { transform: translateY(-1px); border-color: var(--ring); box-shadow: 0 8px 25px rgba(0,0,0,0.22); }
+        .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+        .btn-primary { background: linear-gradient(135deg, var(--primary-600), var(--primary)); color: #fff; border-color: transparent; }
+
+        .tips { color: var(--muted); font-size: .9rem; margin-top: .25rem; }
+
         .status {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            background: rgba(0,0,0,0.7);
-            padding: 0.5rem 1rem;
-            border-radius: 10px;
-            font-size: 0.8rem;
+            position: fixed; right: 1rem; bottom: 1rem; z-index: 20;
+            background: rgba(0,0,0,0.65);
+            color: #fff; padding: .55rem .8rem; border-radius: 10px;
+            font-size: .85rem; border: 1px solid rgba(255,255,255,0.12);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.35);
         }
-        @media (max-width: 768px) {
-            h1 { font-size: 1.8rem; }
-            .display-grid { grid-template-columns: 1fr; }
-            #letter { font-size: 2.5rem; }
-        }
+
+        footer { color: var(--muted); font-size: .85rem; padding: 1rem 0 1.5rem; text-align: center; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🤟 ASL Recognition</h1>
-        
-        <video id="video" autoplay muted></video>
-        
-        <div class="display-grid">
-            <div class="box">
-                <div class="label">Letter</div>
-                <div id="letter">?</div>
+    <header>
+        <div class="container nav" role="navigation" aria-label="Top navigation">
+            <div class="brand">
+                <div class="brand-badge" aria-hidden="true">🤟</div>
+                <h1>ASL Recognition</h1>
             </div>
-            <div class="box">
-                <div class="label">Word</div>
-                <div id="word">_</div>
-            </div>
-            <div class="box">
-                <div class="label">Sentence</div>
-                <div id="sentence">Start signing...</div>
+            <div class="nav-actions">
+                <button class="icon-btn" id="themeToggle" aria-label="Toggle theme" title="Toggle theme">🌓</button>
             </div>
         </div>
-        
-        <div class="controls">
-            <button class="btn" onclick="commitWord()">⌨️ Space</button>
-            <button class="btn" onclick="clearAll()">🗑️ Clear</button>
-            <button class="btn" onclick="copyText()">📋 Copy</button>
+    </header>
+
+    <main>
+        <div class="container layout">
+            <section class="panel" aria-labelledby="camera-title">
+                <h2 id="camera-title" class="panel-title">Camera</h2>
+                <video id="video" autoplay muted playsinline aria-label="Camera preview"></video>
+                <div class="controls" role="group" aria-label="Actions">
+                    <button class="btn btn-primary" onclick="commitWord()">⌨️ Add Word (Space)</button>
+                    <button class="btn" onclick="clearAll()">🗑️ Clear (Esc)</button>
+                    <button class="btn" onclick="copyText()">📋 Copy Sentence</button>
+                </div>
+                <p class="tips">Tips: Press Space to commit a word, and Esc to clear all.</p>
+            </section>
+
+            <aside class="panel" aria-labelledby="recognition-title">
+                <h2 id="recognition-title" class="panel-title">Recognition</h2>
+                <div class="stats">
+                    <div class="card">
+                        <div class="label">Letter</div>
+                        <div id="letter" aria-live="polite">?</div>
+                    </div>
+                    <div class="card">
+                        <div class="label">Word</div>
+                        <div id="word" aria-live="polite">_</div>
+                    </div>
+                    <div class="card">
+                        <div class="label">Sentence</div>
+                        <div id="sentence" aria-live="polite">Start signing...</div>
+                    </div>
+                </div>
+            </aside>
         </div>
-    </div>
-    
-    <div class="status" id="status">Connecting...</div>
+    </main>
+
+    <div class="status" id="status" role="status" aria-live="polite">Connecting...</div>
+
+    <footer>
+        <div class="container">Built for accessibility and clarity. ✨</div>
+    </footer>
 
     <script>
+        // Theme toggle (optional enhancement)
+        const rootEl = document.documentElement;
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) { rootEl.setAttribute('data-theme', savedTheme); }
+        const themeToggleBtn = document.getElementById('themeToggle');
+        themeToggleBtn?.addEventListener('click', () => {
+            const next = rootEl.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+            if (next === 'dark') rootEl.removeAttribute('data-theme'); else rootEl.setAttribute('data-theme', 'light');
+            localStorage.setItem('theme', next);
+        });
+
         const elements = {
             video: document.getElementById('video'),
             letter: document.getElementById('letter'),
@@ -146,11 +203,10 @@
             sentence: document.getElementById('sentence'),
             status: document.getElementById('status')
         };
-        
+
         const socket = io();
         let canvas, ctx;
-        
-        // Initialize camera
+
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -158,19 +214,17 @@
                 });
                 elements.video.srcObject = stream;
                 elements.status.textContent = 'Camera ready';
-                
-                // Create canvas for frame processing
+
                 canvas = document.createElement('canvas');
                 ctx = canvas.getContext('2d');
-                
+
                 startProcessing();
             } catch (err) {
                 elements.status.textContent = 'Camera access denied';
                 console.error('Camera error:', err);
             }
         }
-        
-        // Process video frames
+
         function startProcessing() {
             setInterval(() => {
                 if (elements.video.readyState === 4) {
@@ -181,8 +235,7 @@
                 }
             }, 200);
         }
-        
-        // Keyboard shortcuts
+
         document.addEventListener('keydown', (e) => {
             if (e.code === 'Space') {
                 e.preventDefault();
@@ -191,16 +244,10 @@
                 clearAll();
             }
         });
-        
-        // Functions
-        function commitWord() {
-            socket.emit('commit_word');
-        }
-        
-        function clearAll() {
-            socket.emit('clear_all');
-        }
-        
+
+        function commitWord() { socket.emit('commit_word'); }
+        function clearAll() { socket.emit('clear_all'); }
+
         async function copyText() {
             try {
                 await navigator.clipboard.writeText(elements.sentence.textContent);
@@ -210,27 +257,18 @@
                 console.error('Copy failed:', err);
             }
         }
-        
-        // Socket events
-        socket.on('connect', () => {
-            elements.status.textContent = 'Connected';
-        });
-        
+
+        socket.on('connect', () => { elements.status.textContent = 'Connected'; });
         socket.on('prediction', (data) => {
             elements.letter.textContent = data.letter;
             elements.word.textContent = data.word || '_';
             elements.sentence.textContent = data.sentence || 'Start signing...';
-            
             if (data.confidence > 0) {
                 elements.status.textContent = `Confidence: ${Math.round(data.confidence * 100)}%`;
             }
         });
-        
-        socket.on('error', (data) => {
-            elements.status.textContent = 'Processing error';
-        });
-        
-        // Initialize
+        socket.on('error', () => { elements.status.textContent = 'Processing error'; });
+
         initCamera();
     </script>
 </body>
