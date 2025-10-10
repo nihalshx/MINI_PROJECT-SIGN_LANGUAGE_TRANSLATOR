@@ -152,10 +152,15 @@
                 <video id="video" autoplay muted playsinline aria-label="Camera preview"></video>
                 <div class="controls" role="group" aria-label="Actions">
                     <button class="btn btn-primary" onclick="commitWord()">⌨️ Add Word (Space)</button>
+                    <button class="btn" onclick="backspaceLetter()">⌫ Backspace</button>
+                    <button class="btn" onclick="backspaceWord()">↩ Undo Word</button>
                     <button class="btn" onclick="clearAll()">🗑️ Clear (Esc)</button>
                     <button class="btn" onclick="copyText()">📋 Copy Sentence</button>
+                    <button class="btn" onclick="speakSentence()">🔊 Speak</button>
+                    <button class="btn" onclick="openSettings()">⚙️ Settings</button>
+                    <button class="btn" onclick="openHelp()">❓ Help</button>
                 </div>
-                <p class="tips">Tips: Press Space to commit a word, and Esc to clear all.</p>
+                <p class="tips">Tips: Space = commit word, Esc = clear, Backspace = delete letter, Ctrl+Backspace = undo last word.</p>
             </section>
 
             <aside class="panel" aria-labelledby="recognition-title">
@@ -173,12 +178,68 @@
                         <div class="label">Sentence</div>
                         <div id="sentence" aria-live="polite">Start signing...</div>
                     </div>
+                    <div class="card">
+                        <div class="label">Confidence</div>
+                        <div id="confBarWrap" style="height:12px;background:var(--surface);border:1px solid var(--surface-2);border-radius:999px;overflow:hidden;">
+                            <div id="confBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--primary-600),var(--primary));transition:width .2s ease"></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="label">Timeline</div>
+                        <div id="timeline" style="display:flex;gap:.35rem;min-height:1.6rem;align-items:center;flex-wrap:wrap"></div>
+                    </div>
                 </div>
             </aside>
         </div>
     </main>
 
     <div class="status" id="status" role="status" aria-live="polite">Connecting...</div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" style="display:none;position:fixed;inset:0;z-index:30;background:rgba(0,0,0,0.6);">
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--bg);color:var(--text);border:1px solid var(--surface-2);border-radius:12px;box-shadow:var(--shadow);width:min(520px,92%);max-height:80vh;overflow:auto;padding:1rem;">
+            <h3 style="margin:.25rem 0 1rem">⚙️ Settings</h3>
+            <label>Confidence threshold: <span id="confVal">0.70</span>
+                <input id="confInput" type="range" min="0.10" max="0.99" step="0.01" value="0.70" style="width:100%"/>
+            </label>
+            <label>Prediction interval (ms): <span id="intervalVal">200</span>
+                <input id="intervalInput" type="range" min="50" max="800" step="10" value="200" style="width:100%"/>
+            </label>
+            <label>Buffer size: <span id="bufferVal">5</span>
+                <input id="bufferInput" type="range" min="1" max="20" step="1" value="5" style="width:100%"/>
+            </label>
+            <label style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
+                <input id="autoCommitChk" type="checkbox" checked/> Auto-commit on pause
+            </label>
+            <label>Auto-commit timeout (ms): <span id="timeoutVal">1000</span>
+                <input id="timeoutInput" type="range" min="200" max="3000" step="50" value="1000" style="width:100%"/>
+            </label>
+            <label style="display:flex;align-items:center;gap:.5rem;margin-top:.4rem">
+                <input id="autoSpeakChk" type="checkbox"/> Speak sentence on commit
+            </label>
+            <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+                <button class="btn" onclick="startCalibration()">🎛️ Calibrate</button>
+                <button class="btn" onclick="closeSettings()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" style="display:none;position:fixed;inset:0;z-index:30;background:rgba(0,0,0,0.6);">
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--bg);color:var(--text);border:1px solid var(--surface-2);border-radius:12px;box-shadow:var(--shadow);width:min(560px,94%);max-height:80vh;overflow:auto;padding:1rem;">
+            <h3 style="margin:.25rem 0 1rem">❓ Tutorial & Calibration</h3>
+            <ol style="line-height:1.6">
+                <li>Ensure good, even lighting. Avoid strong backlight.</li>
+                <li>Center your hand about 30–50 cm from the camera.</li>
+                <li>Hold the letter steady for a moment for best recognition.</li>
+                <li>Use Settings → Calibrate to tune the confidence threshold to your environment.</li>
+            </ol>
+            <p class="tips">Shortcuts: Space = commit word, Esc = clear, Backspace = delete last letter, Ctrl+Backspace = undo last word.</p>
+            <div style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem">
+                <button class="btn" onclick="closeHelp()">Close</button>
+            </div>
+        </div>
+    </div>
 
     <footer>
         <div class="container">Built for accessibility and clarity. ✨</div>
@@ -201,11 +262,30 @@
             letter: document.getElementById('letter'),
             word: document.getElementById('word'),
             sentence: document.getElementById('sentence'),
-            status: document.getElementById('status')
+            status: document.getElementById('status'),
+            confBar: document.getElementById('confBar'),
+            timeline: document.getElementById('timeline'),
+            settingsModal: document.getElementById('settingsModal'),
+            helpModal: document.getElementById('helpModal'),
+            confInput: document.getElementById('confInput'),
+            confVal: document.getElementById('confVal'),
+            intervalInput: document.getElementById('intervalInput'),
+            intervalVal: document.getElementById('intervalVal'),
+            bufferInput: document.getElementById('bufferInput'),
+            bufferVal: document.getElementById('bufferVal'),
+            autoCommitChk: document.getElementById('autoCommitChk'),
+            timeoutInput: document.getElementById('timeoutInput'),
+            timeoutVal: document.getElementById('timeoutVal'),
+            autoSpeakChk: document.getElementById('autoSpeakChk'),
         };
 
         const socket = io();
         let canvas, ctx;
+        let captureTimer = null;
+        let captureIntervalMs = 200;
+        let lastSentence = '';
+        let calibrating = false;
+        let calibrationSamples = [];
 
         async function initCamera() {
             try {
@@ -226,14 +306,15 @@
         }
 
         function startProcessing() {
-            setInterval(() => {
+            if (captureTimer) clearInterval(captureTimer);
+            captureTimer = setInterval(() => {
                 if (elements.video.readyState === 4) {
                     canvas.width = elements.video.videoWidth;
                     canvas.height = elements.video.videoHeight;
                     ctx.drawImage(elements.video, 0, 0);
                     socket.emit('stream', canvas.toDataURL('image/jpeg', 0.8));
                 }
-            }, 200);
+            }, captureIntervalMs);
         }
 
         document.addEventListener('keydown', (e) => {
@@ -242,11 +323,19 @@
                 commitWord();
             } else if (e.key === 'Escape') {
                 clearAll();
+            } else if (e.key === 'Backspace' && e.ctrlKey) {
+                e.preventDefault();
+                backspaceWord();
+            } else if (e.key === 'Backspace') {
+                e.preventDefault();
+                backspaceLetter();
             }
         });
 
         function commitWord() { socket.emit('commit_word'); }
         function clearAll() { socket.emit('clear_all'); }
+        function backspaceLetter() { socket.emit('backspace_letter'); }
+        function backspaceWord() { socket.emit('backspace_word'); }
 
         async function copyText() {
             try {
@@ -262,12 +351,137 @@
         socket.on('prediction', (data) => {
             elements.letter.textContent = data.letter;
             elements.word.textContent = data.word || '_';
+            if (data.sentence && data.sentence !== lastSentence && elements.autoSpeakChk?.checked) {
+                speak(data.sentence);
+            }
+            lastSentence = data.sentence || '';
             elements.sentence.textContent = data.sentence || 'Start signing...';
-            if (data.confidence > 0) {
-                elements.status.textContent = `Confidence: ${Math.round(data.confidence * 100)}%`;
+
+            // Confidence bar
+            if (typeof data.confidence === 'number') {
+                const pct = Math.max(0, Math.min(100, Math.round((data.confidence || 0) * 100)));
+                elements.confBar.style.width = pct + '%';
+                elements.status.textContent = `Confidence: ${pct}%`;
+                // Calibration sampling
+                if (calibrating && pct > 0) {
+                    calibrationSamples.push(pct);
+                }
+            }
+
+            // Timeline
+            if (Array.isArray(data.buffer) && elements.timeline) {
+                elements.timeline.innerHTML = '';
+                data.buffer.forEach((ch, idx) => {
+                    const span = document.createElement('span');
+                    span.textContent = ch;
+                    span.style.padding = '.15rem .4rem';
+                    span.style.border = '1px solid var(--surface-2)';
+                    span.style.borderRadius = '6px';
+                    span.style.background = 'var(--surface)';
+                    span.style.opacity = String(0.55 + (0.45 * (idx + 1) / data.buffer.length));
+                    elements.timeline.appendChild(span);
+                });
             }
         });
+        socket.on('auto_commit', (data) => {
+            elements.status.textContent = 'Auto-committed word';
+            if (elements.autoSpeakChk?.checked && data?.sentence) {
+                speak(data.sentence);
+            }
+        });
+        socket.on('config_updated', (cfg) => {
+            // Optionally reflect server-config bounds
+        });
         socket.on('error', () => { elements.status.textContent = 'Processing error'; });
+
+        // Text-to-Speech
+        function speak(text) {
+            try {
+                if (!('speechSynthesis' in window)) return;
+                const u = new SpeechSynthesisUtterance(String(text || ''));
+                u.rate = 1.0; u.pitch = 1.0;
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(u);
+            } catch (_) {}
+        }
+        function speakSentence() { speak(elements.sentence.textContent); }
+
+        // Settings/Help modal control
+        function openSettings() { elements.settingsModal.style.display = 'block'; }
+        function closeSettings() { elements.settingsModal.style.display = 'none'; }
+        function openHelp() { elements.helpModal.style.display = 'block'; }
+        function closeHelp() { elements.helpModal.style.display = 'none'; }
+        window.openSettings = openSettings;
+        window.closeSettings = closeSettings;
+        window.openHelp = openHelp;
+        window.closeHelp = closeHelp;
+
+        // Bind UI setters
+        elements.confInput.addEventListener('input', () => {
+            const v = Number(elements.confInput.value);
+            elements.confVal.textContent = v.toFixed(2);
+        });
+        elements.intervalInput.addEventListener('input', () => {
+            const v = Number(elements.intervalInput.value);
+            elements.intervalVal.textContent = String(v);
+        });
+        elements.bufferInput.addEventListener('input', () => {
+            const v = Number(elements.bufferInput.value);
+            elements.bufferVal.textContent = String(v);
+        });
+        elements.timeoutInput.addEventListener('input', () => {
+            const v = Number(elements.timeoutInput.value);
+            elements.timeoutVal.textContent = String(v);
+        });
+
+        // Persist settings to server and apply locally
+        function pushSettings() {
+            const cfg = {
+                confidence_threshold: Number(elements.confInput.value),
+                prediction_interval: Number(elements.intervalInput.value) / 1000.0,
+                buffer_size: Number(elements.bufferInput.value),
+                auto_commit_enabled: Boolean(elements.autoCommitChk.checked),
+                auto_commit_timeout: Number(elements.timeoutInput.value) / 1000.0,
+            };
+            socket.emit('set_config', cfg);
+            // Update client capture interval
+            captureIntervalMs = Math.max(50, Math.min(1000, Number(elements.intervalInput.value)));
+            startProcessing();
+        }
+        elements.confInput.addEventListener('change', pushSettings);
+        elements.intervalInput.addEventListener('change', pushSettings);
+        elements.bufferInput.addEventListener('change', pushSettings);
+        elements.autoCommitChk.addEventListener('change', pushSettings);
+        elements.timeoutInput.addEventListener('change', pushSettings);
+
+        // Calibration: sample 2 seconds of confidences and set threshold ~ 0.85 * average
+        function startCalibration() {
+            calibrationSamples = [];
+            calibrating = true;
+            elements.status.textContent = 'Calibrating... hold a clear sign';
+            setTimeout(() => {
+                calibrating = false;
+                if (calibrationSamples.length) {
+                    const avg = calibrationSamples.reduce((a,b)=>a+b,0)/calibrationSamples.length;
+                    const recommended = Math.max(0.4, Math.min(0.95, (avg/100) * 0.85));
+                    elements.confInput.value = recommended.toFixed(2);
+                    elements.confVal.textContent = Number(elements.confInput.value).toFixed(2);
+                    pushSettings();
+                    elements.status.textContent = 'Calibration applied';
+                } else {
+                    elements.status.textContent = 'Calibration failed: no signal';
+                }
+            }, 2000);
+        }
+        window.startCalibration = startCalibration;
+
+        // Expose needed functions for buttons
+        window.commitWord = commitWord;
+        window.clearAll = clearAll;
+        window.backspaceLetter = backspaceLetter;
+        window.backspaceWord = backspaceWord;
+        window.copyText = copyText;
+        window.speakSentence = speakSentence;
 
         initCamera();
     </script>

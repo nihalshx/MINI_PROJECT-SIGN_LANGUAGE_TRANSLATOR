@@ -45,14 +45,18 @@ state = {
     'word': '',
     'sentence': '',
     'last_prediction': 0,
-    'predictions': []
+    'predictions': [],
+    'last_hand_time': time.time()
 }
 
 # Configuration
 CONFIG = {
     'confidence_threshold': 0.7,
     'prediction_interval': 0.2,
-    'buffer_size': 5
+    'buffer_size': 5,
+    'auto_commit_enabled': True,
+    'auto_commit_timeout': 1.0,  # seconds without hand before committing current word
+    'timeline_size': 10
 }
 
 def extract_landmarks(frame):
@@ -87,45 +91,61 @@ def predict_letter(landmarks):
 def handle_stream(data):
     """Process video stream and predict ASL letters"""
     current_time = time.time()
-    
+
     # Rate limiting
     if current_time - state['last_prediction'] < CONFIG['prediction_interval']:
         return
-    
+
     try:
         # Decode image
         if not data or ',' not in data:
             return
-            
+
         img_data = base64.b64decode(data.split(',')[1])
         img = Image.open(BytesIO(img_data))
         frame = np.array(img.resize((640, 480)))
-        
+
         # Extract landmarks and predict
         landmarks = extract_landmarks(frame)
+        hand_present = landmarks is not None
+        if hand_present:
+            state['last_hand_time'] = current_time
+
+        # Auto-commit on pause (no hand detected for a while)
+        if (not hand_present and CONFIG.get('auto_commit_enabled', True)
+                and state['word'] and (current_time - state['last_hand_time']) >= CONFIG.get('auto_commit_timeout', 1.0)):
+            if state['sentence']:
+                state['sentence'] += ' '
+            state['sentence'] += state['word']
+            state['word'] = ''
+            state['predictions'] = []
+            emit('auto_commit', {'sentence': state['sentence']})
+
         letter, confidence = predict_letter(landmarks)
-        
+
         # Update predictions buffer
         if letter:
             state['predictions'].append(letter)
             if len(state['predictions']) > CONFIG['buffer_size']:
                 state['predictions'].pop(0)
-            
+
             # Get most common letter from buffer
             if len(state['predictions']) >= 2:
                 most_common = Counter(state['predictions']).most_common(1)[0][0]
                 if not state['word'] or most_common != state['word'][-1]:
                     state['word'] += most_common
-        
+
         state['last_prediction'] = current_time
-        
+
         emit('prediction', {
             'letter': letter or '?',
             'word': state['word'],
             'sentence': state['sentence'],
-            'confidence': round(confidence, 2)
+            'confidence': round(confidence, 2),
+            'buffer': state['predictions'][-CONFIG.get('timeline_size', 10):],
+            'hand_present': hand_present
         })
-        
+
     except Exception as e:
         emit('error', {'message': 'Processing failed'})
 
@@ -138,12 +158,14 @@ def handle_commit_word():
         state['sentence'] += state['word']
         state['word'] = ''
         state['predictions'] = []
-    
+
     emit('prediction', {
         'letter': '?',
         'word': state['word'],
         'sentence': state['sentence'],
-        'confidence': 0
+        'confidence': 0,
+        'buffer': state['predictions'][-CONFIG.get('timeline_size', 10):],
+        'hand_present': False
     })
 
 @socketio.on('clear_all')
@@ -152,13 +174,80 @@ def handle_clear_all():
     state['word'] = ''
     state['sentence'] = ''
     state['predictions'] = []
-    
+
     emit('prediction', {
         'letter': '?',
         'word': '',
         'sentence': '',
-        'confidence': 0
+        'confidence': 0,
+        'buffer': state['predictions'][-CONFIG.get('timeline_size', 10):],
+        'hand_present': False
     })
+
+@socketio.on('backspace_letter')
+def handle_backspace_letter():
+    """Remove last character from the current word"""
+    if state['word']:
+        state['word'] = state['word'][:-1]
+    emit('prediction', {
+        'letter': '?',
+        'word': state['word'],
+        'sentence': state['sentence'],
+        'confidence': 0,
+        'buffer': state['predictions'][-CONFIG.get('timeline_size', 10):],
+        'hand_present': False
+    })
+
+@socketio.on('backspace_word')
+def handle_backspace_word():
+    """Remove the last word from the sentence"""
+    if state['sentence']:
+        parts = state['sentence'].rstrip().split(' ')
+        parts = parts[:-1]
+        state['sentence'] = ' '.join(parts)
+    emit('prediction', {
+        'letter': '?',
+        'word': state['word'],
+        'sentence': state['sentence'],
+        'confidence': 0,
+        'buffer': state['predictions'][-CONFIG.get('timeline_size', 10):],
+        'hand_present': False
+    })
+
+@socketio.on('set_config')
+def handle_set_config(data=None):
+    """Update runtime configuration from client"""
+    if not isinstance(data, dict):
+        data = {}
+    # Validate and update known keys
+    def clamp(val, lo, hi, default):
+        try:
+            v = float(val)
+            return max(lo, min(hi, v))
+        except Exception:
+            return default
+    if 'confidence_threshold' in data:
+        CONFIG['confidence_threshold'] = clamp(data['confidence_threshold'], 0.1, 0.99, CONFIG['confidence_threshold'])
+    if 'prediction_interval' in data:
+        CONFIG['prediction_interval'] = clamp(data['prediction_interval'], 0.05, 1.0, CONFIG['prediction_interval'])
+    if 'buffer_size' in data:
+        try:
+            v = int(data['buffer_size'])
+            CONFIG['buffer_size'] = max(1, min(20, v))
+        except Exception:
+            pass
+    if 'auto_commit_enabled' in data:
+        CONFIG['auto_commit_enabled'] = bool(data['auto_commit_enabled'])
+    if 'auto_commit_timeout' in data:
+        CONFIG['auto_commit_timeout'] = clamp(data['auto_commit_timeout'], 0.2, 3.0, CONFIG['auto_commit_timeout'])
+    if 'timeline_size' in data:
+        try:
+            v = int(data['timeline_size'])
+            CONFIG['timeline_size'] = max(3, min(30, v))
+        except Exception:
+            pass
+
+    emit('config_updated', CONFIG)
 
 @app.route('/')
 def index():
